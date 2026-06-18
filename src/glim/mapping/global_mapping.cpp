@@ -716,6 +716,11 @@ bool GlobalMapping::load(const std::string& path) {
     return false;
   }
 
+  // issue-22 (review codex P2): a freshly loaded map must be (re)fused on the
+  // next optimize() even if pure localization was already initialized before,
+  // so reset the init flag here. Otherwise a second load() would be a no-op.
+  localization_initialized_ = false;
+
   const int start_from_frame_id = submaps.size();
 
   std::string token;
