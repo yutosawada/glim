@@ -75,6 +75,8 @@ GlobalMappingParams::GlobalMappingParams() {
   isam2_relinearize_thresh = config.param<double>("global_mapping", "isam2_relinearize_thresh", 0.1);
 
   init_pose_damping_scale = config.param<double>("global_mapping", "init_pose_damping_scale", 1e10);
+
+  pure_localization_mode = config.param<bool>("global_mapping", "pure_localization_mode", false);
 }
 
 GlobalMappingParams::~GlobalMappingParams() {}
@@ -88,6 +90,8 @@ GlobalMapping::GlobalMapping(const GlobalMappingParams& params) : params(params)
 
   session_id = 0;
   imu_integration.reset(new IMUIntegration);
+
+  localization_initialized_ = false;
 
   new_values.reset(new gtsam::Values);
   new_factors.reset(new gtsam::NonlinearFactorGraph);
@@ -364,13 +368,31 @@ void GlobalMapping::optimize() {
 
   logger->debug("|new_factors|={} |new_values|={}", new_factors->size(), new_values->size());
 
-  Callbacks::on_smoother_update(*isam2, *new_factors, *new_values);
-  auto result = update_isam2(*new_factors, *new_values);
+  if (params.pure_localization_mode) {
+    if (!localization_initialized_) {
+      // First call only: connect to the loaded map by running one graph update.
+      logger->info("Initializing localization: connecting to existing map");
+      Callbacks::on_smoother_update(*isam2, *new_factors, *new_values);
+      auto result = update_isam2(*new_factors, *new_values);
+      Callbacks::on_smoother_update_result(*isam2, result);
+
+      localization_initialized_ = true;
+      logger->info("Localization initialized - FactorGraph updates now disabled");
+    } else {
+      // Subsequent calls: skip FactorGraph updates entirely (matching only).
+      // New submaps are still created but never registered to the graph; the
+      // pose is tracked by scan matching against the loaded map.
+      logger->debug("Pure localization: FactorGraph update skipped, matching only");
+    }
+  } else {
+    // Normal SLAM mode.
+    Callbacks::on_smoother_update(*isam2, *new_factors, *new_values);
+    auto result = update_isam2(*new_factors, *new_values);
+    Callbacks::on_smoother_update_result(*isam2, result);
+  }
 
   new_factors.reset(new gtsam::NonlinearFactorGraph);
   new_values.reset(new gtsam::Values);
-
-  Callbacks::on_smoother_update_result(*isam2, result);
 
   update_submaps();
   Callbacks::on_update_submaps(submaps);

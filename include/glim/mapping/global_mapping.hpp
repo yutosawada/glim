@@ -52,6 +52,10 @@ public:
   double isam2_relinearize_thresh;
 
   double init_pose_damping_scale;
+
+  // Pure localization mode: load an existing map and only estimate the pose
+  // against it (no new factors added to the graph after init).
+  bool pure_localization_mode;
 };
 
 /**
@@ -108,5 +112,9 @@ private:
   std::unique_ptr<gtsam_points::ISAM2Ext> isam2;
 
   std::shared_ptr<void> tbb_task_arena;
+
+  // Pure localization state: set true once the first graph update connects to
+  // the loaded map; afterwards graph updates are skipped (matching only).
+  bool localization_initialized_;
 };
 }  // namespace glim
