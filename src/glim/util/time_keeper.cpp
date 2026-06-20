@@ -57,6 +57,19 @@ bool TimeKeeper::validate_imu_stamp(const double imu_stamp) {
 }
 
 bool TimeKeeper::process(const glim::RawPoints::Ptr& points) {
+  // Empty scans (0 points) crash the per-point timestamp checks below
+  // (points->times.front()/back() dereference an empty vector -> SIGSEGV). A
+  // sparse-2.5D sim LiDAR can briefly return an empty cloud when the sensor pose
+  // sees no geometry in range; drop such frames instead of crashing.
+  if (points->points.empty()) {
+    static bool first_empty_warning = true;
+    if (first_empty_warning) {
+      spdlog::warn("empty point cloud received (0 points); dropping the frame");
+      first_empty_warning = false;
+    }
+    return false;
+  }
+
   replace_points_stamp(points);
 
   if (points->points.size() != points->times.size()) {
